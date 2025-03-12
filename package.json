@@ -1,0 +1,49 @@
+{
+  "name": "wisent",
+  "version": "0.1.1",
+  "description": "Client library for interacting with the Wisent backend services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "wisent",
+    "ai",
+    "machine-learning",
+    "control-vectors",
+    "inference"
+  ],
+  "author": "Wisent Team <info@wisent.ai>",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.16",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wisent/wisent-js"
+  },
+  "homepage": "https://docs.wisent.ai",
+  "bugs": {
+    "url": "https://github.com/wisent/wisent-js/issues"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 
