@@ -36,12 +36,43 @@ jobs:
       - name: Make tags and history visible
         run: git fetch --force --tags --unshallow || git fetch --force --tags
 
+      # A venv, not the system interpreter.  `ubuntu-latest` resolves to an image
+      # whose `python3` is marked externally-managed, so a plain
+      # `pip install git+...` fails with `error: externally-managed-environment`
+      # before any check runs -- a permanently red gate, which certifies exactly as
+      # little as a sleeping one and trains people to ignore a red build.  A venv
+      # sidesteps the marker without `--break-system-packages`, and pushing its
+      # `bin` onto GITHUB_PATH leaves every later `autoversion` call unchanged.
+      # RUNNER_TEMP is set by the runner, so the fallback is for running this body
+      # by hand.
       - name: Install the rule
         run: |
           set -euo pipefail
+          : "${RUNNER_TEMP:=$(mktemp -d)}"
           python3 -m venv "$RUNNER_TEMP/rule"
-          "$RUNNER_TEMP/rule/bin/pip" install --quiet "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
+          "$RUNNER_TEMP/rule/bin/python" -m pip install --quiet \
+            "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
           echo "$RUNNER_TEMP/rule/bin" >> "$GITHUB_PATH"
+
+      # The installed rule must answer before anything downstream announces a
+      # verdict.  Exiting zero is not enough: whatever sits on PATH under that name
+      # has to classify two known cases correctly, or the verdict below belongs to
+      # a stranger -- an absent install, a shadowing stub, a half-built wheel.
+      - name: The rule answers, and answers as the rule
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TEMP:=$(mktemp -d)}"
+          released="$(jq -r '.version // ""' released-surface.json)"
+          [ -n "$released" ] || { echo "::error::released-surface.json names no version, so the rule cannot be asked a known question"; false; }
+          printf '%s' '{"surface": ["export:known", "export:doomed"]}' > "$RUNNER_TEMP/both.json"
+          printf '%s' '{"surface": ["export:known"]}' > "$RUNNER_TEMP/one.json"
+          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/both.json" --candidate-surface "$RUNNER_TEMP/both.json" --json > "$RUNNER_TEMP/same.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
+          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/both.json" --candidate-surface "$RUNNER_TEMP/one.json" --json > "$RUNNER_TEMP/gone.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
+          same="$(jq -r '.change // ""' "$RUNNER_TEMP/same.json")"
+          gone="$(jq -r '.change // ""' "$RUNNER_TEMP/gone.json")"
+          [ "$same" = internal ] || { echo "::error::what answers to autoversion called two identical surfaces '$same' instead of 'internal', so it is not the rule and its verdict about this tree means nothing"; false; }
+          [ "$gone" = breaking ] || { echo "::error::what answers to autoversion called a removed name '$gone' instead of 'breaking', so it is not the rule and its verdict about this tree means nothing"; false; }
+          echo "the rule classifies both known cases: identical is $same, removed is $gone"
 
       # "Unproven" is also what a broken expression produces: an npm lookup that
       # can no longer recognise a published package refuses forever while the
@@ -118,6 +149,7 @@ jobs:
       - name: The baseline sits on the best reachable tier
         run: |
           set -euo pipefail
+          : "${RUNNER_TEMP:=$(mktemp -d)}"
           python3 scripts/baseline.py --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
           best="$(jq -r '.source | split(" ") | first' "$RUNNER_TEMP/best.json")"
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
@@ -138,6 +170,7 @@ jobs:
       - name: Refuse a surface change the declared version does not carry
         run: |
           set -euo pipefail
+          : "${RUNNER_TEMP:=$(mktemp -d)}"
           python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
           released="$(jq -r '.version // ""' released-surface.json)"
           declared="$(jq -r '.version // ""' package.json)"

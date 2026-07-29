@@ -69,7 +69,15 @@ OPENERS = {"(": ")", "[": "]", "{": "}"}
 CLOSERS = {close: open_ for open_, close in OPENERS.items()}
 
 DECL_KEYWORDS = {"class", "interface", "type", "enum", "const", "let", "var", "function", "abstract"}
+# Declarations whose brace group holds their members.
 BODY_KEYWORDS = {"class", "interface", "enum"}
+# Declarations a brace group ENDS.  A `.d.ts` writes `export declare function f():
+# number;` and a source file writes `export function f(): number { ... }`; a reader
+# that only stopped at the semicolon would run past the body of the second and
+# swallow every declaration after it -- reporting a shorter surface, which the rule
+# reads as removed capability.  A type alias is the exception: it always ends at a
+# semicolon, and its braces are its members rather than its body.
+BODY_TERMINATED = BODY_KEYWORDS | {"function", "const", "let", "var"}
 MEMBER_MODIFIERS = {
     "public", "private", "protected", "static", "readonly",
     "abstract", "declare", "async", "override", "get", "set",
@@ -336,7 +344,7 @@ def parse_decl(tokens, partner, index, origin):
                            + at("", tokens[min(cursor, size - ONE)].line))
     name = tokens[cursor].value
     cursor += ONE
-    end, braces = statement_end(tokens, partner, cursor, keyword in BODY_KEYWORDS)
+    end, braces = statement_end(tokens, partner, cursor, keyword in BODY_TERMINATED)
     members = set()
     if keyword in BODY_KEYWORDS:
         if not braces:
@@ -619,6 +627,18 @@ def source_twin(relative):
 
 
 def pick_entry(root, manifest):
+    """The file the entry point's names are read out of.
+
+    The source twin is preferred over the built path the manifest names, and the
+    order is load-bearing rather than tidy.  This repository commits its `dist/`,
+    and `package.json` runs `npm run build` from `prepare`, so `npm publish`
+    rebuilds `dist/` out of `src/` -- which makes `src/` what decides the surface
+    a consumer will hold, and the committed `dist/` a build output that may lag it.
+    A reader that trusted the committed `dist/` would see no change when an export
+    is added or removed in `src/` and never rebuilt, and pass a real surface change
+    through.  An unpacked published tarball ships no `src/`, so there the built
+    declarations are read, which is exactly what that artifact is.
+    """
     candidates = []
     if "exports" in manifest:
         candidates.extend(exports_field_candidates(manifest["exports"]))
@@ -631,7 +651,7 @@ def pick_entry(root, manifest):
                            "so the package has no entry point and no importable surface")
     tried = []
     for candidate in candidates:
-        for relative in (candidate, source_twin(candidate)):
+        for relative in (source_twin(candidate), candidate):
             probe = (root / relative).resolve()
             tried.append(str(probe))
             if probe.is_file():
