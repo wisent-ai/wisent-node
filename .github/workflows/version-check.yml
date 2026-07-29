@@ -1,0 +1,162 @@
+name: version-check
+
+# Refuse a change to the public surface of the `wisent` npm package that the
+# version in package.json does not carry.  The rule is installed, never copied:
+# this repository supplies only the two things it alone knows -- its surface, read
+# statically by scripts/surface.py, and the version it declares.
+#
+# Actions is billing-locked for this organisation, so nothing here has ever
+# executed on a runner.  Every step body below was extracted and run locally,
+# including inside a shallow tag-less clone, which is the only local technique
+# that can falsify a claim about CI.
+#
+# Two transports are used on purpose.  The registry is read once by curl and once
+# by Python, each with its own positive control, because a stubbed curl leaves a
+# Python path on real network and looks verified.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # checkout fetches one commit and no tags, so any step reading a ref would
+      # see an empty tag list whatever origin holds and conclude the bottom tier
+      # is the best artifact available -- blind to the exact tag it exists to
+      # notice.  The baseline generator reads refs on its fallback path.
+      - name: Make tags and history visible
+        run: git fetch --force --tags --unshallow || git fetch --force --tags
+
+      - name: Install the rule
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/rule"
+          "$RUNNER_TEMP/rule/bin/pip" install --quiet "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
+          echo "$RUNNER_TEMP/rule/bin" >> "$GITHUB_PATH"
+
+      # "Unproven" is also what a broken expression produces: an npm lookup that
+      # can no longer recognise a published package refuses forever while the
+      # registry answers perfectly, and the operator blames the registry.  So
+      # assert that this transport still sees packages npm certainly serves, in
+      # both the spellings a name can take.
+      - name: The Python registry probe can recognise packages npm certainly serves
+        run: |
+          set -euo pipefail
+          for control in express @types/node; do
+            answer="$(python3 scripts/baseline.py --probe "$control" || true)"
+            case "$answer" in
+              "published "*)
+                echo "control: $answer"
+                ;;
+              *)
+                echo "::error::this check cannot recognise $control, which npm certainly serves, so it is the check that is broken and not the registry: $answer"
+                false
+                ;;
+            esac
+          done
+
+      # A marker that claims a registry must name an artifact that registry really
+      # serves; a marker that claims none must be contradicted by nothing on the
+      # registry this package publishes to.  Absence is read from the answer's
+      # content, in three states, because an exit-status read fails identically on
+      # not-found and on no egress -- and the wrong reading is the passing one.
+      - name: The baseline names an artifact npm really serves
+        env:
+          REGISTRY: https://registry.npmjs.org
+          AGENT: autoversion-version-check
+        run: |
+          set -euo pipefail
+          name="$(jq -r '.name // ""' package.json)"
+          [ -n "$name" ] || { echo "::error::package.json declares no name, and npm's absence answer names nothing it was asked about, so an empty lookup would read as proven absence"; false; }
+          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
+          released="$(jq -r '.version // ""' released-surface.json)"
+          [ -n "$marker" ] && [ -n "$released" ] || { echo "::error::released-surface.json carries no marker or no version, so every comparison against it would be vacuous"; false; }
+          claims="$(python3 scripts/baseline.py --marker-claims "$marker")"
+
+          control="$(curl -sS -A "$AGENT" "$REGISTRY/express" || true)"
+          printf '%s' "$control" | jq -e '.name == "express"' >/dev/null || { echo "::error::this step cannot see express, which npm certainly serves, so the step is broken and its verdict about $name means nothing"; false; }
+          scoped="$(curl -sS -A "$AGENT" "$REGISTRY/@types/node" || true)"
+          printf '%s' "$scoped" | jq -e '.name == "@types/node"' >/dev/null || { echo "::error::this step cannot see @types/node, so it cannot read a scoped coordinate and its verdict about $name means nothing"; false; }
+
+          answer="$(curl -sS -A "$AGENT" "$REGISTRY/$name" || true)"
+          served="$(printf '%s' "$answer" | jq -r '.name // ""')"
+          if [ "$served" = "$name" ]; then
+            state=published
+          elif printf '%s' "$answer" | jq -e '(.error // "") | ascii_downcase | contains("not found")' >/dev/null; then
+            state=absent
+          else
+            echo "::error::npm named neither $name nor a not-found, so neither its presence nor its absence is proven: $answer"
+            false
+          fi
+
+          if [ "$claims" = registry ]; then
+            [ "$state" = published ] || { echo "::error::the baseline claims npm serves $name, but npm says $state"; false; }
+            tarball="$(printf '%s' "$answer" | jq -r --arg wanted "$released" '.versions[$wanted].dist.tarball // ""')"
+            [ -n "$tarball" ] || { echo "::error::the baseline was recovered from $name $released, but npm serves no tarball for that version"; false; }
+            [ "${marker#*:}" = "${tarball#"$REGISTRY/"}" ] || { echo "::error::the baseline names ${marker#*:} but npm addresses $name $released as ${tarball#"$REGISTRY/"}"; false; }
+            echo "$marker is the artifact npm serves for $name $released"
+          else
+            [ "$state" = absent ] || { echo "::error::the baseline claims no registry serves this distribution, but npm serves $name, so the baseline is dodging a real release"; false; }
+            echo "npm serves no $name, which is what $marker claims"
+          fi
+
+      # An honest marker on a superseded artifact is still stale: a release can
+      # appear after the baseline was generated, and a head marker keeps passing
+      # the check above while a better artifact sits unused.  The generator runs
+      # into a file and its status is tested on its own line, because in a command
+      # substitution containing a pipeline the exit status is discarded -- and if
+      # both markers then read empty, the comparison passes vacuously.
+      - name: The baseline sits on the best reachable tier
+        run: |
+          set -euo pipefail
+          python3 scripts/baseline.py --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
+          best="$(jq -r '.source | split(" ") | first' "$RUNNER_TEMP/best.json")"
+          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
+          [ -n "$best" ] && [ -n "$marker" ] || { echo "::error::a marker read empty, so this comparison would be vacuous"; false; }
+          if [ "${marker%%:*}" = head ]; then
+            want="${best%%:*}"
+            have="${marker%%:*}"
+          else
+            want="$best"
+            have="$marker"
+          fi
+          [ "$want" = "$have" ] || { echo "::error::the committed baseline is '$have' but '$want' is reachable now, so the frozen surface is stale"; false; }
+          echo "the committed baseline is the best artifact reachable: $marker"
+
+      # The committed baseline is never rewritten here, and the regenerated
+      # surface never reaches the decision: recomputing both sides at check time
+      # is the one shape that cannot refuse anything.
+      - name: Refuse a surface change the declared version does not carry
+        run: |
+          set -euo pipefail
+          python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
+          released="$(jq -r '.version // ""' released-surface.json)"
+          declared="$(jq -r '.version // ""' package.json)"
+          [ -n "$released" ] && [ -n "$declared" ] || { echo "::error::a version read empty, so the comparison would be vacuous"; false; }
+          autoversion decide --current "$released" --published-surface released-surface.json --candidate-surface "$RUNNER_TEMP/candidate.json" --json > "$RUNNER_TEMP/verdict.json" || { echo "::error::the rule could not decide, so this tree is unjudged"; false; }
+          cat "$RUNNER_TEMP/verdict.json"
+          change="$(jq -r '.change // ""' "$RUNNER_TEMP/verdict.json")"
+          required="$(jq -r '.next // ""' "$RUNNER_TEMP/verdict.json")"
+          [ -n "$change" ] && [ -n "$required" ] || { echo "::error::the rule named no change or no required version"; false; }
+          if [ "$declared" = "$released" ]; then
+            if [ "$change" = internal ]; then
+              echo "the surface is unchanged since $released, so there is nothing to release"
+            else
+              echo "::error::the surface change since $released is '$change', so this tree must declare $required before it is published; package.json still says $declared"
+              false
+            fi
+          elif [ "$declared" != "$required" ]; then
+            echo "::error::package.json declares $declared, but the '$change' surface change since $released requires $required"
+            false
+          else
+            echo "package.json declares $declared, which is what a '$change' change since $released requires"
+          fi
