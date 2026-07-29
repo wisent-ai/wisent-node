@@ -42,15 +42,20 @@ jobs:
       # before any check runs -- a permanently red gate, which certifies exactly as
       # little as a sleeping one and trains people to ignore a red build.  A venv
       # sidesteps the marker without `--break-system-packages`.
+      # (Taken from the runner image, not reproduced here: no machine in this fleet
+      # carries the marker, so the failure itself was never observed locally.  What
+      # was measured is that the shape below works, that the rule answers out of the
+      # venv, and that a stranger's binary loses or is named and refused.)
       #
       # GITHUB_PATH is read by the runner AFTER the step exits, so it changes PATH
       # for LATER steps and never for the step that appends to it.  The `export`
-      # gives this step the same prepend those later steps get, which is what makes
-      # the liveness check below a question about the venv rather than about
-      # whatever else answers to that name -- with nothing else on PATH the
-      # unexported form dies "command not found", and with a saboteur first on PATH
-      # it exits zero because the saboteur answered, which is the worse of the two.
-      # The two defaults are for running this body by hand; the runner sets both.
+      # gives this step the same prepend those later steps get.
+      #
+      # And the check is on the resolved PATH, not on an exit status: `--help` is
+      # satisfied by any executable that exits zero, so a stranger earlier on PATH
+      # would answer for the rule and the step would go green.  Measured both ways:
+      # a stranger first on PATH is refused BY NAME, and the venv prepended ahead of
+      # it is accepted.  The two defaults are for running this body by hand.
       - name: Install the rule
         run: |
           set -euo pipefail
@@ -61,14 +66,22 @@ jobs:
             "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
           echo "$RUNNER_TEMP/rule/bin" >> "$GITHUB_PATH"
           export PATH="$RUNNER_TEMP/rule/bin:$PATH"
-          command -v autoversion > /dev/null || { echo "::error::the venv installed but nothing in it answers to autoversion, so no later step could be trusted"; false; }
-          autoversion --help > /dev/null || { echo "::error::the rule does not answer"; false; }
+          resolved="$(command -v autoversion || true)"
+          case "$resolved" in
+            "$RUNNER_TEMP/rule/bin/"*) echo "the rule answers from $resolved" ;;
+            *) echo "::error::autoversion resolves to '${resolved:-nothing}', outside the venv this step just built, so a later verdict would be a stranger's"; false ;;
+          esac
 
-      # Liveness is not identity.  Exiting zero is not enough: whatever sits on PATH
-      # under that name has to classify two known cases correctly, or the verdict
-      # below belongs to a stranger -- an absent install, a shadowing stub, a
-      # half-built wheel.  A saboteur answering a constant `internal` passes
-      # `--help` without effort and fails the second question here.
+      # Liveness is not identity, and `--help` is satisfied by any executable that
+      # exits zero.  So the rule is asked TWO questions whose answers differ, and a
+      # single constant answer fails one of them: a saboteur returning `internal`
+      # forever passes a liveness check and passes this gate's own branches, because
+      # at declared == released `internal` IS the branch that passes.
+      #
+      # The pair is built out of the COMMITTED baseline rather than from synthetic
+      # names, so this one step also establishes that the frozen file parses, that it
+      # carries a version and a non-trivial surface, and that it is that very file
+      # which reaches the decision below.
       - name: The rule answers, and answers as the rule
         run: |
           set -euo pipefail
@@ -76,15 +89,18 @@ jobs:
           if [ -d "$RUNNER_TEMP/rule/bin" ]; then export PATH="$RUNNER_TEMP/rule/bin:$PATH"; fi
           released="$(jq -r '.version // ""' released-surface.json)"
           [ -n "$released" ] || { echo "::error::released-surface.json names no version, so the rule cannot be asked a known question"; false; }
-          printf '%s' '{"surface": ["export:known", "export:doomed"]}' > "$RUNNER_TEMP/both.json"
-          printf '%s' '{"surface": ["export:known"]}' > "$RUNNER_TEMP/one.json"
-          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/both.json" --candidate-surface "$RUNNER_TEMP/both.json" --json > "$RUNNER_TEMP/same.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
-          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/both.json" --candidate-surface "$RUNNER_TEMP/one.json" --json > "$RUNNER_TEMP/gone.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
+          jq '{surface: .surface}' released-surface.json > "$RUNNER_TEMP/whole.json"
+          jq '{surface: (.surface - [(.surface | sort | first)])}' released-surface.json > "$RUNNER_TEMP/lessone.json"
+          whole="$(jq -r '.surface | length' "$RUNNER_TEMP/whole.json")"
+          lessone="$(jq -r '.surface | length' "$RUNNER_TEMP/lessone.json")"
+          [ "$whole" != "$lessone" ] || { echo "::error::no name could be taken out of the committed baseline, so neither known answer would mean anything"; false; }
+          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/whole.json" --candidate-surface "$RUNNER_TEMP/whole.json" --json > "$RUNNER_TEMP/same.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
+          autoversion decide --current "$released" --published-surface "$RUNNER_TEMP/whole.json" --candidate-surface "$RUNNER_TEMP/lessone.json" --json > "$RUNNER_TEMP/gone.json" || { echo "::error::autoversion did not answer at all, so nothing below is the rule's verdict"; false; }
           same="$(jq -r '.change // ""' "$RUNNER_TEMP/same.json")"
           gone="$(jq -r '.change // ""' "$RUNNER_TEMP/gone.json")"
-          [ "$same" = internal ] || { echo "::error::what answers to autoversion called two identical surfaces '$same' instead of 'internal', so it is not the rule and its verdict about this tree means nothing"; false; }
-          [ "$gone" = breaking ] || { echo "::error::what answers to autoversion called a removed name '$gone' instead of 'breaking', so it is not the rule and its verdict about this tree means nothing"; false; }
-          echo "the rule classifies both known cases: identical is $same, removed is $gone"
+          [ "$same" = internal ] || { echo "::error::what answers to autoversion called the committed surface against itself '$same' instead of 'internal', so it is not the rule and its verdict about this tree means nothing"; false; }
+          [ "$gone" = breaking ] || { echo "::error::what answers to autoversion called a name removed from the committed surface '$gone' instead of 'breaking', so it is not the rule and its verdict about this tree means nothing"; false; }
+          echo "the rule classifies both known cases built from the committed baseline: itself is $same, one name fewer is $gone"
 
       # "Unproven" is also what a broken expression produces: an npm lookup that
       # can no longer recognise a published package refuses forever while the
@@ -224,7 +240,7 @@ jobs:
           }
 
           mutilated="$RUNNER_TEMP/mutilated.json"
-          jq '{surface: (.surface as $all | $all | map(select(. != ($all | first))))}' released-surface.json > "$mutilated"
+          jq '{surface: (.surface - [(.surface | sort | first)])}' released-surface.json > "$mutilated"
           [ "$(jq -r '.surface | length' "$mutilated")" != "$(jq -r '.surface | length' released-surface.json)" ] || { echo "::error::the refusal self-test could not remove a name from the baseline, so it would prove nothing"; false; }
           if judge "$mutilated" self-test "expected refusal: " "$released"; then
             echo "::error::this gate accepted a surface with a name removed from the baseline, so it cannot refuse anything and its verdict about the real tree is worthless"
