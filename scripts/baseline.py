@@ -207,15 +207,22 @@ def run(command, cwd=None):
     return finished.returncode, finished.stdout, finished.stderr
 
 
-def origin_repository():
-    """`owner/name` at `origin`, which is where tags and releases must be asked
-    about -- never package.json's `repository`, which can name a repository that
-    does not exist."""
-    code, out, _ = run(["git", "remote", "get-url", "origin"])
+def origin_url(root):
+    """Where `origin` points, or None when there is no remote to ask."""
+    code, out, _ = run(["git", "remote", "get-url", "origin"], cwd=root)
     if code != ZERO:
         return None
-    url = out.strip()
-    if not url:
+    return out.strip() or None
+
+
+def github_repository(url):
+    """`owner/name` when `origin` is on GitHub, else None.
+
+    Taken from `origin`, never from package.json's `repository`: this manifest
+    names github.com/wisent/wisent-js, which does not exist, so believing it would
+    make every tag and release question a question about nothing.
+    """
+    if url is None:
         return None
     text = url[len("git+"):] if url.startswith("git+") else url
     if text.endswith(".git"):
@@ -229,12 +236,16 @@ def origin_repository():
     return parts[ZERO] + "/" + parts[ONE]
 
 
-def blocking_github_release(repository):
+def blocking_github_release(url, repository):
     """A GitHub Release with assets outranks every tier below npm, so its presence
     must stop the generator instead of being quietly skipped."""
+    if url is None:
+        raise BaselineError("this tree has no `origin`, so neither a Release nor a tag can "
+                            "be asked about and no tier below the registry can be trusted")
     if repository is None:
-        raise BaselineError("`origin` does not name a GitHub repository, so whether a "
-                            "Release outranks the tag and head tiers is unknown")
+        print("note: origin (" + url + ") is not on GitHub, so there is no GitHub Release "
+              "tier to outrank a tag here", file=sys.stderr)
+        return None
     status, body = fetch(GITHUB_API + "/repos/" + repository + "/releases")
     if status is None:
         raise BaselineError("GitHub did not answer about releases of " + repository
@@ -255,10 +266,10 @@ def blocking_github_release(repository):
     return None
 
 
-def origin_tags():
+def origin_tags(root):
     """Tag names at `origin`.  A local listing is not evidence: a fork shares the
     upstream's objects, so a working copy can show tags that were never ours."""
-    code, out, err = run(["git", "ls-remote", "--tags", "origin"])
+    code, out, err = run(["git", "ls-remote", "--tags", "origin"], cwd=root)
     if code != ZERO:
         raise BaselineError("`git ls-remote --tags origin` failed, so whether this "
                             "distribution was ever tagged is unknown: " + first_line(err))
@@ -277,8 +288,8 @@ def origin_tags():
     return sorted(names)
 
 
-def version_in_tag(tag):
-    code, out, _ = run(["git", "show", tag + ":package.json"])
+def version_in_tag(tag, root):
+    code, out, _ = run(["git", "show", tag + ":package.json"], cwd=root)
     if code != ZERO:
         return None
     try:
@@ -296,15 +307,15 @@ def is_newer(candidate, incumbent):
     return json.loads(out).get("is_newer") == str(True)
 
 
-def best_tag():
+def best_tag(root):
     """(tag, version) for the newest tag whose tree declares the version its name
     claims.  A tag that disagrees with its own tree is reported and skipped: filing
     a baseline under a version the artifact does not carry measures everything
     afterwards against the wrong tree."""
     chosen = None
-    for tag in origin_tags():
+    for tag in origin_tags(root):
         claimed = tag[len("v"):] if tag.startswith("v") else tag
-        declared = version_in_tag(tag)
+        declared = version_in_tag(tag, root)
         if declared is None:
             print("note: tag " + tag + " has no readable package.json, so it is skipped",
                   file=sys.stderr)
@@ -318,12 +329,12 @@ def best_tag():
     return chosen
 
 
-def surface_of_tag(tag, tolerant):
+def surface_of_tag(tag, tolerant, root):
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch) / "tree"
         tree.mkdir()
         code, out, err = run(["git", "archive", "--format=tar", "-o",
-                              str(Path(scratch) / "tag.tar"), tag])
+                              str(Path(scratch) / "tag.tar"), tag], cwd=root)
         if code != ZERO:
             raise BaselineError("`git archive " + tag + "` failed, so its tree cannot be "
                                 "read: " + first_line(err))
@@ -335,8 +346,8 @@ def surface_of_tag(tag, tolerant):
         return surface_reader.compute(tree, tolerant)
 
 
-def head_sha():
-    code, out, err = run(["git", "rev-parse", "HEAD"])
+def head_sha(root):
+    code, out, err = run(["git", "rev-parse", "HEAD"], cwd=root)
     if code != ZERO:
         raise BaselineError("`git rev-parse HEAD` failed, so even the last-resort tier "
                             "has no marker: " + first_line(err))
@@ -344,8 +355,18 @@ def head_sha():
 
 
 def scoped_spelling(name, repository):
-    """The owner's scoped spelling of an unscoped name, or None."""
-    if name.startswith("@") or repository is None:
+    """The owner's scoped spelling of an unscoped name, or None.
+
+    Asking npm about the scope as well as the bare name is not decoration: a second
+    coordinate serving this same distribution would mean no version is canonical,
+    and if the manifest's bare name were the absent one it would be the *scoped*
+    coordinate carrying the real releases.
+    """
+    if name.startswith("@"):
+        return None
+    if repository is None:
+        print("note: origin is not on GitHub, so this owner's npm scope cannot be derived "
+              "and only the bare name " + name + " was asked about", file=sys.stderr)
         return None
     return "@" + repository.split("/")[ZERO] + "/" + name
 
@@ -358,7 +379,8 @@ def build(root, tolerant):
                             "ask npm about and no absence anybody could prove")
     name = name.strip()
     declared = manifest.get("version")
-    repository = origin_repository()
+    remote = origin_url(root)
+    repository = github_repository(remote)
 
     state, why, document = probe_npm(name)
     if state == UNPROVEN:
@@ -395,17 +417,17 @@ def build(root, tolerant):
         return {"version": version, "source": TIER_NPM_TARBALL + ":" + path + " " + prose,
                 "surface": surface}
 
-    blocked = blocking_github_release(repository)
+    blocked = blocking_github_release(remote, repository)
     if blocked is not None:
         raise BaselineError("npm serves nothing for " + name + " but the GitHub Release "
                             + blocked + " carries assets, which outranks the tag and head "
                             "tiers; recover from that asset instead of filing a lower "
                             "baseline underneath it")
 
-    tagged = best_tag()
+    tagged = best_tag(root)
     if tagged is not None:
         tag, version = tagged
-        surface = surface_of_tag(tag, tolerant)
+        surface = surface_of_tag(tag, tolerant, root)
         prose = ("reproduced with `git archive` from the tag " + tag + " at origin, whose tree "
                  "declares " + version + "; npm serves no " + name + " today")
         return {"version": version, "source": TIER_GIT_ARCHIVE + ":" + tag + " " + prose,
@@ -417,7 +439,7 @@ def build(root, tolerant):
     surface = surface_reader.compute(root, tolerant)
     prose = ("the working revision: npm serves no " + name + ", origin holds no usable tag, "
              "and no GitHub Release carries an asset, so nothing has been published to recover")
-    return {"version": declared.strip(), "source": TIER_HEAD + ":" + head_sha() + " " + prose,
+    return {"version": declared.strip(), "source": TIER_HEAD + ":" + head_sha(root) + " " + prose,
             "surface": surface}
 
 
