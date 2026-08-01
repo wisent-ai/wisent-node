@@ -1,5 +1,14 @@
 # Wisent
 
+<!-- wisent-readme-signals:start -->
+[![CI](https://github.com/wisent-ai/wisent-node/actions/workflows/version-check.yml/badge.svg?branch=main)](https://github.com/wisent-ai/wisent-node/actions/workflows/version-check.yml)
+[![Release](https://img.shields.io/github/v/release/wisent-ai/wisent-node?display_name=tag&sort=semver)](https://github.com/wisent-ai/wisent-node/releases)
+[![Downloads](https://img.shields.io/github/downloads/wisent-ai/wisent-node/total)](https://github.com/wisent-ai/wisent-node/releases)
+[![License](https://img.shields.io/github/license/wisent-ai/wisent-node)](https://github.com/wisent-ai/wisent-node)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
+<!-- wisent-readme-signals:end -->
+
+
 A JavaScript/TypeScript client library for interacting with the Wisent backend services.
 
 ## Installation
@@ -97,4 +106,4 @@ For full documentation, visit [docs.wisent.ai](https://docs.wisent.ai).
 
 ## License
 
-MIT 
+MIT
