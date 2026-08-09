@@ -1,0 +1,15 @@
+[automation]
+managed = true
+source_fingerprint = "f3d83a407a545ec8"
+category = "developer"
+
+[banner]
+title = "Control models from TypeScript."
+description = "JavaScript and TypeScript client for the Wisent backend."
+product = "Wisent"
+url = "wisent.ai"
+theme = "dark"
+layout = "signal-left"
+art_seed = "wisent-node"
+width = 1584
+height = 396
