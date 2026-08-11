@@ -10,7 +10,18 @@
 
 # Wisent
 
-A JavaScript/TypeScript client library for interacting with the Wisent backend services.
+Monitor and Control Your AI Agent Brain.
+
+You look at what your model says. But what was it actually thinking? Wisent shows
+you how to use information from AI activations, intermediate steps within its
+layers, to your advantage. Wisent is a full toolkit for representation
+engineering, activation steering and mechanistic interpretability. Cut
+hallucination rates, decensor your model or stop it from being detected by
+AI-generated text detectors. Your Models — Yours to Control. Better than
+fine-tuning. Better than analysing the outputs directly.
+
+Deploy the latest research in your stack. This is the JavaScript and TypeScript client
+you call it from.
 
 ## Installation
 
