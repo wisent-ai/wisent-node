@@ -1,11 +1,13 @@
 [automation]
 managed = true
-source_fingerprint = "419690eea66fb48b"
+source_fingerprint = "14fb9aaabb636d9d"
 category = "agent"
+copy_status = "missing"
+approved_in = ""
 
 [banner]
-title = "Control models from TypeScript."
-description = "JavaScript and TypeScript client for the Wisent backend."
+title = "Wisent Node"
+description = ""
 product = "Wisent"
 url = "wisent.com"
 theme = "dark"
