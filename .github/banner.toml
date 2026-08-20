@@ -1,15 +1,15 @@
 [automation]
 managed = true
-source_fingerprint = "f3d83a407a545ec8"
-category = "developer"
+source_fingerprint = "419690eea66fb48b"
+category = "agent"
 
 [banner]
 title = "Control models from TypeScript."
 description = "JavaScript and TypeScript client for the Wisent backend."
 product = "Wisent"
-url = "wisent.ai"
+url = "wisent.com"
 theme = "dark"
-layout = "signal-left"
+layout = "orbit-left"
 art_seed = "wisent-node"
 width = 1584
 height = 396
