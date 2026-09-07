@@ -3,7 +3,7 @@ name: version-check
 # Refuse a change to the public surface of the `wisent` npm package that the
 # version in package.json does not carry.  The rule is installed, never copied:
 # this repository supplies only the two things it alone knows -- its surface, read
-# statically by scripts/surface.py, and the version it declares.
+# statically by tests/surface.py, and the version it declares.
 #
 # Actions is billing-locked for this organisation, so nothing here has ever
 # executed on a runner.  Every step body below was extracted and run locally,
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           for control in express @types/node; do
-            answer="$(python3 scripts/baseline.py --probe "$control" || true)"
+            answer="$(python3 tests/baseline.py --probe "$control" || true)"
             case "$answer" in
               "published "*)
                 echo "control: $answer"
@@ -139,7 +139,7 @@ jobs:
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           released="$(jq -r '.version // ""' released-surface.json)"
           [ -n "$marker" ] && [ -n "$released" ] || { echo "::error::released-surface.json carries no marker or no version, so every comparison against it would be vacuous"; false; }
-          claims="$(python3 scripts/baseline.py --marker-claims "$marker")"
+          claims="$(python3 tests/baseline.py --marker-claims "$marker")"
 
           control="$(curl -sS -A "$AGENT" "$REGISTRY/express" || true)"
           printf '%s' "$control" | jq -e '.name == "express"' >/dev/null || { echo "::error::this step cannot see express, which npm certainly serves, so the step is broken and its verdict about $name means nothing"; false; }
@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${RUNNER_TEMP:=$(mktemp -d)}"
-          python3 scripts/baseline.py --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
+          python3 tests/baseline.py --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
           best="$(jq -r '.source | split(" ") | first' "$RUNNER_TEMP/best.json")"
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           [ -n "$best" ] && [ -n "$marker" ] || { echo "::error::a marker read empty, so this comparison would be vacuous"; false; }
@@ -248,5 +248,5 @@ jobs:
           fi
           echo "the gate refuses a removed name, so its verdict about this tree means something"
 
-          python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
+          python3 tests/surface.py > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
           judge "$RUNNER_TEMP/candidate.json" tree "::error::" "$declared"
