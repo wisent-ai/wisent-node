@@ -112,6 +112,22 @@ const response = await client.inference.generate({
 });
 ```
 
+## Release maintenance
+
+Release metadata tools live under `release/versioning/`; they are not library
+tests and are not included in the npm distribution.
+
+```bash
+python3 release/versioning/surface.py
+python3 release/versioning/baseline.py --stdout
+```
+
+The surface reader separates tokenization, public declarations, module
+dependencies, and package entrypoint selection. Baseline recovery keeps npm
+artifact evidence separate from Git release evidence. The version-check workflow
+uses these same entrypoints. `--stdout` does not replace `released-surface.json`;
+an unreadable distribution or unproven publication tier returns a nonzero exit.
+
 ## Documentation
 
 For full documentation, visit [docs.wisent.ai](https://docs.wisent.ai).
