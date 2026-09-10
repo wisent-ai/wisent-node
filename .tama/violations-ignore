@@ -1,0 +1,11 @@
+# Audit exclusions for `tama find-violations`: generated output and paths
+# fixed by something outside this project.
+#
+# Written by the wisent-visuals banner bot from .github/banner.toml:
+assets/readme-banner.svg
+# Written by npm; it is the resolved dependency graph, not source.
+package-lock.json
+# The repository root. npm reads package.json and package-lock.json from here,
+# tsc reads tsconfig.json, GitHub reads README.md and LICENSE, git reads
+# .gitignore, and the release workflow reads .wisent-release.json.
+.
