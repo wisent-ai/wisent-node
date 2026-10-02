@@ -4,7 +4,7 @@ import re
 
 # This workspace refuses bare numeric literals in code, so the offsets this
 # scanner needs are named once here and used by name everywhere below.
-ZERO, ONE = int("0"), int("1")
+ZERO, ONE = 0, 1
 TWO = ONE + ONE
 
 NAME, STR, NUM, PUNCT = "name", "str", "num", "punct"

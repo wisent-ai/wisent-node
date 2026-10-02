@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
-ZERO, ONE = int("0"), int("1")
+ZERO, ONE = 0, 1
 
 REGISTRY = "https://registry.npmjs.org"
 USER_AGENT = "autoversion-baseline (+https://github.com/lbartoszcze/AutoVersion)"
