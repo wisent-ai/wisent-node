@@ -31,27 +31,24 @@ export interface InferenceRequest {
     id: string;
     
     /**
-     * Scaling factor for the control vector
-     * @default 1.0
+     * Scaling factor for the control vector. Required: steering strength is
+     * the caller's choice, and no strength suits every vector.
      */
-    scale?: number;
+    scale: number;
   }[];
   
   /**
-   * Maximum number of tokens to generate
-   * @default 256
+   * Maximum number of tokens to generate; omitted, the server's model decides
    */
   maxTokens?: number;
   
   /**
-   * Temperature for sampling
-   * @default 0.7
+   * Temperature for sampling; omitted, the model's own sampling is used
    */
   temperature?: number;
   
   /**
-   * Top-p sampling parameter
-   * @default 1.0
+   * Top-p sampling parameter; omitted, the model's own sampling is used
    */
   topP?: number;
 }
@@ -113,17 +110,16 @@ export class InferenceAPI {
   
   /**
    * Run inference with a specific control vector
-   * @param prompt Input prompt for the model
    * @param controlVector Control vector to apply
+   * @param scale Scaling factor for the control vector (required: the caller states the steering strength)
    * @param model Model to use (optional, defaults to the control vector's model)
-   * @param scale Scaling factor for the control vector (optional, defaults to 1.0)
    * @returns Promise resolving to the inference response
    */
   async runWithControlVector(
     prompt: string,
     controlVector: ControlVector,
-    model?: string,
-    scale: number = 1.0
+    scale: number,
+    model?: string
   ): Promise<InferenceResponse> {
     return this.runInference({
       model: model || controlVector.model,

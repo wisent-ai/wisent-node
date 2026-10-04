@@ -17,8 +17,8 @@ export interface WisentClientConfig {
   baseUrl?: string;
   
   /**
-   * Timeout for API requests in milliseconds (optional)
-   * @default 30000 (30 seconds)
+   * Timeout for API requests in milliseconds (optional); omitted, a request
+   * waits for the API's answer
    */
   timeout?: number;
 }
@@ -41,7 +41,7 @@ export class WisentClient {
     
     this.httpClient = axios.create({
       baseURL: this.baseUrl,
-      timeout: config.timeout || 30000,
+      timeout: config.timeout,
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'User-Agent': `wisent-js/${version}`,
