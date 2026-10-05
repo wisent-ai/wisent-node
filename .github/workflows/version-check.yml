@@ -3,7 +3,7 @@ name: version-check
 # Refuse a change to the public surface of the `wisent` npm package that the
 # version in package.json does not carry.  The rule is installed, never copied:
 # this repository supplies only the two things it alone knows -- its surface, read
-# statically by release/versioning/surface.py, and the version it declares.
+# statically by the Rust tool in release/ (`wisent-node-release surface`), and the version it declares.
 #
 # Actions is billing-locked for this organisation, so nothing here has ever
 # executed on a runner.  Every step body below was extracted and run locally,
@@ -11,8 +11,8 @@ name: version-check
 # that can falsify a claim about CI.
 #
 # Two transports are used on purpose.  The registry is read once by curl and once
-# by Python, each with its own positive control, because a stubbed curl leaves a
-# Python path on real network and looks verified.
+# by the Rust release tool, each with its own positive control, because a stubbed
+# curl leaves the tool's path on real network and looks verified.
 
 on:
   push:
@@ -107,11 +107,11 @@ jobs:
       # registry answers perfectly, and the operator blames the registry.  So
       # assert that this transport still sees packages npm certainly serves, in
       # both the spellings a name can take.
-      - name: The Python registry probe can recognise packages npm certainly serves
+      - name: The registry probe can recognise packages npm certainly serves
         run: |
           set -euo pipefail
           for control in express @types/node; do
-            answer="$(python3 release/versioning/baseline.py --probe "$control" || true)"
+            answer="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --probe "$control" || true)"
             case "$answer" in
               "published "*)
                 echo "control: $answer"
@@ -139,7 +139,7 @@ jobs:
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           released="$(jq -r '.version // ""' released-surface.json)"
           [ -n "$marker" ] && [ -n "$released" ] || { echo "::error::released-surface.json carries no marker or no version, so every comparison against it would be vacuous"; false; }
-          claims="$(python3 release/versioning/baseline.py --marker-claims "$marker")"
+          claims="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --marker-claims "$marker")"
 
           control="$(curl -sS -A "$AGENT" "$REGISTRY/express" || true)"
           printf '%s' "$control" | jq -e '.name == "express"' >/dev/null || { echo "::error::this step cannot see express, which npm certainly serves, so the step is broken and its verdict about $name means nothing"; false; }
@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${RUNNER_TEMP:=$(mktemp -d)}"
-          python3 release/versioning/baseline.py --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
+          cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --stdout > "$RUNNER_TEMP/best.json" || { echo "::error::the baseline generator failed, so the best reachable tier is unknown"; false; }
           best="$(jq -r '.source | split(" ") | first' "$RUNNER_TEMP/best.json")"
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           [ -n "$best" ] && [ -n "$marker" ] || { echo "::error::a marker read empty, so this comparison would be vacuous"; false; }
@@ -248,5 +248,5 @@ jobs:
           fi
           echo "the gate refuses a removed name, so its verdict about this tree means something"
 
-          python3 release/versioning/surface.py > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
+          cargo run --locked --quiet --manifest-path release/Cargo.toml -- surface > "$RUNNER_TEMP/candidate.json" || { echo "::error::the surface reader failed on this tree, so the candidate surface is unknown rather than empty"; false; }
           judge "$RUNNER_TEMP/candidate.json" tree "::error::" "$declared"

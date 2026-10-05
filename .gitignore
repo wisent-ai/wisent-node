@@ -42,3 +42,5 @@ dist/
 .vscode/
 *.swp
 *.swo 
+# The release tool's build and unpacked artifacts
+release/target/

@@ -114,19 +114,22 @@ const response = await client.inference.generate({
 
 ## Release maintenance
 
-Release metadata tools live under `release/versioning/`; they are not library
-tests and are not included in the npm distribution.
+The release metadata tool is the Rust crate in `release/`; it is not a library
+test and is not included in the npm distribution.
 
 ```bash
-python3 release/versioning/surface.py
-python3 release/versioning/baseline.py --stdout
+cargo run --manifest-path release/Cargo.toml -- surface
+cargo run --manifest-path release/Cargo.toml -- baseline --stdout
 ```
 
-The surface reader separates tokenization, public declarations, module
-dependencies, and package entrypoint selection. Baseline recovery keeps npm
-artifact evidence separate from Git release evidence. The version-check workflow
-uses these same entrypoints. `--stdout` does not replace `released-surface.json`;
-an unreadable distribution or unproven publication tier returns a nonzero exit.
+`surface` reads the package's public names statically (exports, public members
+of exported types, `bin` commands) from the entry point package.json declares.
+`baseline` recovers `released-surface.json` from the best tier reachable now: the
+tarball npm serves, else a tag at origin, else the working revision.
+`baseline --probe NAME` asks npm about one name and `baseline --marker-claims
+MARKER` says whether a marker's tier claims a registry. The version-check workflow
+uses these same commands. `--stdout` does not replace `released-surface.json`; an
+unreadable distribution or unproven publication tier exits 1 with the reason.
 
 ## Documentation
 
