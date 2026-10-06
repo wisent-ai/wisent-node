@@ -126,9 +126,10 @@ cargo run --manifest-path release/Cargo.toml -- baseline --stdout
 of exported types, `bin` commands) from the entry point package.json declares.
 `baseline` recovers `released-surface.json` from the best tier reachable now: the
 tarball npm serves, else a tag at origin, else the working revision.
-`baseline --probe NAME` asks npm about one name and `baseline --marker-claims
-MARKER` says whether a marker's tier claims a registry. The version-check workflow
-uses these same commands. `--stdout` does not replace `released-surface.json`; an
+`published NAME` asks npm about one name and prints published, absent or
+unproven (unproven exits 1), and `marker-claims MARKER` says whether a marker's
+tier claims a registry. The version-check workflow uses these same commands.
+`--stdout` does not replace `released-surface.json`; an
 unreadable distribution or unproven publication tier exits 1 with the reason.
 
 ## Documentation

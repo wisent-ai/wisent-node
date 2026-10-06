@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           for control in express @types/node; do
-            answer="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --probe "$control" || true)"
+            answer="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- published "$control" || true)"
             case "$answer" in
               "published "*)
                 echo "control: $answer"
@@ -139,7 +139,7 @@ jobs:
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           released="$(jq -r '.version // ""' released-surface.json)"
           [ -n "$marker" ] && [ -n "$released" ] || { echo "::error::released-surface.json carries no marker or no version, so every comparison against it would be vacuous"; false; }
-          claims="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --marker-claims "$marker")"
+          claims="$(cargo run --locked --quiet --manifest-path release/Cargo.toml -- marker-claims "$marker")"
 
           control="$(curl -sS -A "$AGENT" "$REGISTRY/express" || true)"
           printf '%s' "$control" | jq -e '.name == "express"' >/dev/null || { echo "::error::this step cannot see express, which npm certainly serves, so the step is broken and its verdict about $name means nothing"; false; }

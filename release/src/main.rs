@@ -3,8 +3,8 @@
 //! - `surface [--root DIR] [--tolerant]` prints `{"surface": [...]}` for the distribution at DIR;
 //! - `baseline [--root DIR] [--output FILE | --stdout] [--tolerant]` writes `released-surface.json`
 //!   from the best tier reachable now, or prints it without touching the committed file;
-//! - `baseline --probe NAME` asks npm about NAME through the subject's own code path;
-//! - `baseline --marker-claims MARKER` prints whether MARKER's tier claims a registry.
+//! - `published NAME` asks npm about NAME through the subject's own code path;
+//! - `marker-claims MARKER` prints whether MARKER's tier claims a registry.
 //!
 //! Exit 1 is a refusal with its reason on standard error.
 
@@ -48,12 +48,14 @@ enum Command {
         /// Pass tolerant reading to the surface reader.
         #[arg(long)]
         tolerant: bool,
-        /// Ask npm about NAME and print published, absent or unproven.
-        #[arg(long, value_name = "NAME", conflicts_with = "marker_claims")]
-        probe: Option<String>,
-        /// Print whether MARKER's tier claims a registry.
-        #[arg(long, value_name = "MARKER")]
-        marker_claims: Option<String>,
+    },
+    /// Ask npm about NAME and print published, absent or unproven; unproven exits 1.
+    Published {
+        name: String,
+    },
+    /// Print whether MARKER's tier claims a registry.
+    MarkerClaims {
+        marker: String,
     },
 }
 
@@ -80,11 +82,11 @@ fn main() -> ExitCode {
             .and_then(|root| surface::compute(&root, tolerant))
             .and_then(|names| serde_json::to_string_pretty(&serde_json::json!({ "surface": names })).map_err(|error| error.to_string()))
             .map(|text| println!("{text}")),
-        Command::Baseline { marker_claims: Some(marker), .. } => {
+        Command::MarkerClaims { marker } => {
             println!("{}", baseline::marker_claim(&marker));
             Ok(())
         }
-        Command::Baseline { probe: Some(name), .. } => match baseline::report_probe(&name) {
+        Command::Published { name } => match baseline::report_probe(&name) {
             Ok(line) => {
                 println!("{line}");
                 Ok(())
@@ -96,7 +98,7 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
-        Command::Baseline { root, output, stdout, tolerant, .. } => baseline(root, output, stdout, tolerant),
+        Command::Baseline { root, output, stdout, tolerant } => baseline(root, output, stdout, tolerant),
     };
     match outcome {
         Ok(()) => ExitCode::SUCCESS,

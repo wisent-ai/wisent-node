@@ -24,12 +24,20 @@ fn first_line(text: &str) -> String {
 pub fn fetch(url: &str) -> (Option<u16>, String) {
     let request = ureq::get(url).set("User-Agent", USER_AGENT).set("Accept", "application/json");
     match request.call() {
-        Ok(response) => {
-            let status = response.status();
-            (Some(status), response.into_string().unwrap_or_default())
-        }
-        Err(ureq::Error::Status(status, response)) => (Some(status), response.into_string().unwrap_or_default()),
+        Ok(response) => (Some(response.status()), body(response)),
+        Err(ureq::Error::Status(status, response)) => (Some(status), body(response)),
         Err(ureq::Error::Transport(error)) => (None, error.to_string()),
+    }
+}
+
+/// The whole answer. `into_string` stops at ten megabytes and a package with
+/// many versions (`@types/node`) answers more, so the body is read to its
+/// end; a read that fails says so instead of reading as an empty answer.
+fn body(response: ureq::Response) -> String {
+    let mut text = String::new();
+    match response.into_reader().read_to_string(&mut text) {
+        Ok(_) => text,
+        Err(error) => format!("reading npm's answer failed: {error}"),
     }
 }
 
@@ -45,11 +53,15 @@ pub fn probe(name: &str) -> Answer {
         );
     }
     let (status, body) = fetch(&registry_url(name));
-    if status.is_none() {
+    let Some(status) = status else {
         return Answer::Unproven(format!("no request to npm completed: {}", first_line(&body)));
-    }
+    };
     let Ok(document) = serde_json::from_str::<Value>(&body) else {
-        return Answer::Unproven(format!("npm answered with something that is not JSON: {}", first_line(&body)));
+        return Answer::Unproven(format!(
+            "npm answered status {status} with {} bytes that are not JSON: {}",
+            body.len(),
+            first_line(&body)
+        ));
     };
     if !document.is_object() {
         return Answer::Unproven(format!("npm answered with {document}"));
