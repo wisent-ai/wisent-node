@@ -44,3 +44,5 @@ dist/
 *.swo 
 # The release tool's build and unpacked artifacts
 release/target/
+# Scratch the commit gates and journeys write
+/.build/
