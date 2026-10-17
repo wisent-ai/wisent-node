@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "product": "wisent-node",
+  "releases": true,
+  "version_source": {
+    "kind": "json",
+    "path": "package.json",
+    "pointer": "/version"
+  },
+  "platforms": {
+    "npm-package": {
+      "runner_platform": "linux-amd64",
+      "quality": [],
+      "build": {
+        "argv": ["stado", "product", "npm", "pack"]
+      },
+      "stage": {
+        "release/npm-package.tgz": "npm-package.tgz",
+        "release/npm-package.tgz.sha256": "npm-package.tgz.sha256"
+      }
+    }
+  },
+  "promotion": {
+    "channels": ["candidate", "stable"],
+    "reconcile": false
+  },
+  "deliveries": [
+    {
+      "name": "npm",
+      "platform": "npm-package",
+      "argv": ["stado", "product", "deliver", "npm"],
+      "required": true,
+      "secret_env": {
+        "NPM_TOKEN": "npm#token"
+      }
+    }
+  ]
+}
