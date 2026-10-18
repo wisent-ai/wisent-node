@@ -40,77 +40,56 @@ yarn add wisent
 
 ## Quick Start
 
+The package's default export builds a client and the three APIs that share it.
+
 ```typescript
-import { WisentClient } from 'wisent';
+import createWisentClient from 'wisent';
 
-// Initialize the client
-const client = new WisentClient({
-  apiKey: "your_api_key",
-  baseUrl: "https://api.wisent.ai"
+// The base URL is optional; omitted, the client calls https://api.wisent.ai.
+const wisent = createWisentClient("your_api_key");
+
+// Control vectors the backend holds for a model.
+const [helpful] = await wisent.controlVectors.getControlVectors({
+  model: "mistralai/Mistral-7B-Instruct-v0.1",
 });
 
-// Get a control vector from the backend
-client.controlVector.get({
-  name: "helpful", 
-  model: "mistralai/Mistral-7B-Instruct-v0.1"
-})
-.then(controlVector => {
-  console.log("Retrieved control vector:", controlVector);
-})
-.catch(error => {
-  console.error("Error:", error);
-});
-
-// Apply a control vector during inference
-client.inference.generateWithControl({
-  modelName: "mistralai/Mistral-7B-Instruct-v0.1",
-  prompt: "Tell me about quantum computing",
-  controlVectors: {
-    helpful: 0.8, 
-    concise: 0.5
-  }
-})
-.then(response => {
-  console.log("Response:", response.text);
-})
-.catch(error => {
-  console.error("Error:", error);
-});
+// Steer one generation with it. The scale is required: steering strength is
+// the caller's choice, and no strength suits every vector.
+const strength = Number(process.env.STEERING_SCALE);
+const response = await wisent.inference.runWithControlVector(
+  "Tell me about quantum computing",
+  helpful,
+  strength,
+);
+console.log(response.text, response.usage.totalTokens);
 ```
 
 ## Advanced Usage
 
-### Working with Control Vectors
+### Several control vectors in one request
+
+`runInference` takes the whole request: the model, the prompt and each control
+vector by id with its own scale. `maxTokens`, `temperature` and `topP` are sent
+only when given; omitted, the server's model decides them.
 
 ```typescript
-import { WisentClient } from 'wisent';
+const concise = await wisent.controlVectors.getControlVector("concise-vector-id");
 
-const client = new WisentClient({
-  apiKey: "your_api_key"
-});
-
-// Get a control vector
-const helpfulVector = await client.controlVector.get({
-  name: "helpful", 
-  model: "mistralai/Mistral-7B-Instruct-v0.1"
-});
-
-// Combine multiple vectors
-const combinedVector = await client.controlVector.combine({
-  vectors: {
-    helpful: 0.8,
-    concise: 0.5
-  },
-  model: "mistralai/Mistral-7B-Instruct-v0.1"
-});
-
-// Apply during inference
-const response = await client.inference.generate({
+const response = await wisent.inference.runInference({
+  model: helpful.model,
   prompt: "Tell me about quantum computing",
-  controlVector: combinedVector,
-  method: "caa" // Context-Aware Addition
+  controlVectors: [
+    { id: helpful.id, scale: strength },
+    { id: concise.id, scale: strength },
+  ],
 });
 ```
+
+### Vector utilities
+
+`cosineSimilarity`, `euclideanDistance`, `scaleVector`, `addVectors` and
+`subtractVectors` are exported for working with activation and control vectors
+as plain number arrays.
 
 ## Release maintenance
 

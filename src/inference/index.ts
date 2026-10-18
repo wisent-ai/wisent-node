@@ -110,6 +110,7 @@ export class InferenceAPI {
   
   /**
    * Run inference with a specific control vector
+   * @param prompt Input prompt for the model
    * @param controlVector Control vector to apply
    * @param scale Scaling factor for the control vector (required: the caller states the steering strength)
    * @param model Model to use (optional, defaults to the control vector's model)
