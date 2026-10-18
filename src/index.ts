@@ -46,10 +46,10 @@ import { InferenceAPI } from './inference';
 /**
  * Create a complete Wisent client with all APIs
  * @param apiKey API key for authentication
- * @param baseUrl Optional base URL for the API
+ * @param baseUrl Base URL of the Wisent API the client calls
  * @returns Object containing all Wisent APIs
  */
-export default function createWisentClient(apiKey: string, baseUrl?: string) {
+export default function createWisentClient(apiKey: string, baseUrl: string) {
   const client = new WisentClient({ apiKey, baseUrl });
   
   return {

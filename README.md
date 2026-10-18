@@ -41,12 +41,15 @@ yarn add wisent
 ## Quick Start
 
 The package's default export builds a client and the three APIs that share it.
+Both the API key and the base URL of the Wisent API you call are required; the
+client assumes no address, and a missing or empty one is refused naming it. A
+request waits for the API's answer and rejects with the API's or the network's
+own error.
 
 ```typescript
 import createWisentClient from 'wisent';
 
-// The base URL is optional; omitted, the client calls https://api.wisent.ai.
-const wisent = createWisentClient("your_api_key");
+const wisent = createWisentClient("your_api_key", "your_wisent_api_base_url");
 
 // Control vectors the backend holds for a model.
 const [helpful] = await wisent.controlVectors.getControlVectors({

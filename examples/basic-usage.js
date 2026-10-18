@@ -1,77 +1,47 @@
 /**
- * Basic usage example for the Wisent client library
+ * Basic usage example for the Wisent client library.
+ *
+ * Run it with WISENT_API_KEY, WISENT_API_URL (the base URL of the Wisent API
+ * you call), WISENT_MODEL and STEERING_SCALE set; a missing one is refused
+ * naming it, and a failed request ends the run with the API's own error.
  */
 
-// Import the Wisent client library
 const wisent = require('../dist');
 
-// Create a client instance with your API key
-const client = wisent.default('YOUR_API_KEY');
-
-// Example: Get control vectors
-async function getControlVectors() {
-  try {
-    // Get control vectors for a specific model
-    const controlVectors = await client.controlVectors.getControlVectors({
-      model: 'llama-3-70b',
-      limit: 5
-    });
-    
-    console.log('Available control vectors:');
-    controlVectors.forEach(cv => {
-      console.log(`- ${cv.name}: ${cv.description || 'No description'}`);
-    });
-    
-    return controlVectors;
-  } catch (error) {
-    console.error('Error fetching control vectors:', error.message);
-    return [];
-  }
+function required(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
 }
 
-// Example: Run inference with a control vector
-async function runInference(controlVectorId) {
-  try {
-    const result = await client.inference.runInference({
-      model: 'llama-3-70b',
-      prompt: 'Write a short poem about artificial intelligence.',
-      controlVectors: [
-        {
-          id: controlVectorId,
-          scale: 1.0
-        }
-      ],
-      maxTokens: 100
-    });
-    
-    console.log('\nGenerated text:');
-    console.log(result.text);
-    
-    console.log('\nToken usage:');
-    console.log(`- Prompt tokens: ${result.usage.promptTokens}`);
-    console.log(`- Completion tokens: ${result.usage.completionTokens}`);
-    console.log(`- Total tokens: ${result.usage.totalTokens}`);
-  } catch (error) {
-    console.error('Error running inference:', error.message);
-  }
-}
+const client = wisent.default(required('WISENT_API_KEY'), required('WISENT_API_URL'));
+const model = required('WISENT_MODEL');
+const strength = Number(required('STEERING_SCALE'));
+if (Number.isNaN(strength)) throw new Error('STEERING_SCALE is not a number');
 
-// Run the examples
 async function main() {
   console.log(`Using Wisent client library v${wisent.version}`);
-  
-  // Get control vectors
-  const controlVectors = await getControlVectors();
-  
-  // If we have control vectors, run inference with the first one
-  if (controlVectors.length > 0) {
-    await runInference(controlVectors[0].id);
-  } else {
-    console.log('No control vectors available for inference.');
+
+  const controlVectors = await client.controlVectors.getControlVectors({ model });
+  for (const vector of controlVectors) {
+    console.log(`- ${vector.name} (${vector.id})`);
   }
+
+  const [first] = controlVectors;
+  if (!first) {
+    console.log(`The API holds no control vector for ${model}.`);
+    return;
+  }
+
+  const response = await client.inference.runWithControlVector(
+    'Write a short poem about artificial intelligence.',
+    first,
+    strength,
+  );
+  console.log(response.text);
+  console.log(`Prompt tokens: ${response.usage.promptTokens}`);
+  console.log(`Completion tokens: ${response.usage.completionTokens}`);
+  console.log(`Total tokens: ${response.usage.totalTokens}`);
 }
 
-// Execute the main function
-main().catch(error => {
-  console.error('Unhandled error:', error);
-}); 
+main();
